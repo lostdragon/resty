@@ -1,162 +1,205 @@
-关于REST的介绍可以参考<a href="http://blog.leezhong.com/tech/2010/11/14/rest.html">我之前的文章</a>，总体说来，REST是web发展的趋势，而PHP是web开发的利器，但我找了一遍，只找到了两个PHP REST框架(不包括那些以MVC为核心，同时又支持REST的框架)，一个是<a href="http://peej.github.com/tonic/">Tonic</a>，架构理念我比较认同，但代码质量实在不敢恭维。还有一个是<a href="http://www.recessframework.org/">Recess</a>，在我看来，它有点复杂化了，把不该rest做的事也做了。在这种情况下，我只能自己动手，丰衣足食了。
+### REST简介
 
-### RESTY简介
+REST的流程很简单，获取Request单例，然后执行exec方法，该方法里会调用Route来解析URI获取相应的Resource，
+然后实例化Resource，触发相应的HTTP方法，最后返回一个Response对象，Response执行output方法就输出了结果。
+听起来好像一点都不简单，哈哈，还是来大概看一下代码吧
 
-RESTY的流程很简单，获取Request单例，然后执行exec方法，该方法里会调用Route来解析URI获取相应的Resource，然后实例化Resource，触发相应的HTTP方法，最后返回一个Response对象，Response执行output方法就输出了结果。听起来好像一点都不简单，哈哈，还是来大概看一下代码吧
+	Rest_Request::instance()->exec()->output();
 
-index.php
-
-	try {
-		Request::instance()->exec()->output();
-	} catch (Route_Exception $e) {
-		Response::instance()
-			->set_status(404)
-			->set_body(array(
-				'error' => 'Resource Not Found',
-				'Request' => $_SERVER['REQUEST_URI'],
-			))
-			->output()
-			;
-	}
-
-request.php
-
-	public function exec()
-	{
-		$class_name = 'Resource_'.str_replace('/', '_', $this->get_resource());
-		$class = new ReflectionClass($class_name);
-		$resource = $class->newInstance($this);
-		$class->getMethod('before')->invoke($resource);
-		$class->getMethod($this->request_method)->invoke($resource);
-		$class->getMethod('after')->invoke($resource);
-		
-		$response = Response::instance();
-		$response->set_body($resource->get_data());
-		return $response;
-	}
-
-response.php
-
-	public function output() 
-	{
-		$this->_content_encoding();
-		header('Content-type:application/json;charset=utf-8');
-		header('Status:'.$this->_status.' '.$this->_messages[$this->_status]);
-		header('Content-Length: '.strlen($this->_body));
-		foreach($this->_header as $key => $val)
-		{
-			header($key.':'.$val);
-		}
-		echo $this->_body;
-	}
-
-### RESTY特性
+### REST特性
 
 #### 轻量级
 
-RESTY包含了核心的Request/Resource/Response/Route/Config/Validation功能，没有其他多余的部件，如Controller/View等等，很纯粹。一个工具应该把一件事做好，同时提供接口，这也是RESTY的哲学。
+REST包含了核心的Request/Resource/Response/Route/Config/Validation功能，常用的memcache/mysqli的部件，不包含其他如Session/View等，如果有需要可以自己实现。
+一个工具应该把一件事做好，同时提供接口，这也是REST的哲学。
 
 #### 使用方便
 
-使用时，只需定义好uri对应的Resource，然后编写Resource就行了，其他的事RESTY会帮你搞定。
+使用时，URI不需要定义，请求资源的最后一个为资源名，然后编写Resource就行了，其他的事REST会帮你搞定。
+例如:
+请求资源为 /users/11 则自动路由到 classes/resource/users.php //id 可以在请求数据中获取
+请求资源为 /users/11/relationships/22 则自动路由到 classes/resource/users/relationships.php //修饰资源属性可以通过users单数加_id即user_id在请求数据中获取
 
-config/resource.php demo
-
-	return array(
-		'/example/(?<id>[0-9]+)' => 'example',
-		'/example/foo/(?<name>[a-zA-Z_0-9]+)' => 'example/foo',
-	);
-
-可以看到uri支持正则，没错，原生的php正则。resource部分对应resource文件的路径(不包括后缀)
-
-resource/example.php
-
-	class Resource_Example extends Resource
-	{
-		public function get()
-		{
-			/* set etag
-			Response::instance()
-				->if_none_match(md5('hello'))
-				->add_etag(md5('hello'))
-				;
-			//*/
-			if ($this->validate())
-			{
-				$this->_data = $this->get_data();
-			}
-			else 
-			{
-				$this->_data = array('error' => implode(',', $this->getErrors()), 'request' => $_SERVER['REQUEST_URI']);
-			}
-		}
-
-		public function post()
-		{
-			$this->_data = array_merge($this->get_data(), array('type' => 'post'));
-		}
-	}
-
-每一个资源对应4个http方法。RESTY还很贴心地提供了Validation部件(基本上是直接从Kohana中K过来的)，方便对数据进行校验。
-
-#### 易扩展
-
-system/classes文件夹下的类文件，都可以在app/classes文件夹下扩展，而且使用时不用做任何修改。假设你之前已经写了不少Resource，忽然想到要扩展系统的Resource类，正常的做法是定义一个MY_Resource之类的类文件来扩展系统的Resource类，然后使用时使用MY_Resource而不是Resource。但这样就会有个问题，之前使用的Resource类都要做修改了，可谓牵一发而动全身。RESTY就方便了，同样要扩展Resource类，只要在app/classes下新建一个resource.php文件，然后扩展Resty_Resource类即可。
-
-	class Resource extends Resty_Resource
-	{
-		public function foo()
-		{
-			//...
-		}
-	}
-
-这样使用时还是一样的Resource类，但却多了foo方法。这也是从Kohana学到的无缝扩展大法（题外话：Kohana真是个不错的框架，各位不妨一试）。原理就是在类自动加载时会先去app/classes文件夹下去找，如果没找到的话再去system/classes下找。
-
-#### 验证功能
-
-作为一个比较完整的REST框架，Validation还是不能少的，为了不重复制造轮子，直接把Kohana的验证类搬了过来，稍作修改。
-
-配置：config/validation.php
-
-	return array(
-		'example' => array(
-			'get' => array(
-				'filters' => array(
-					'id' => array(
-						'trim' => null,
-					),
-				),
-				'rules' => array(
-					'id' => array(
-						'not_empty' => null,
-						'min_length' => array(2),
-						'digit' => null,
-					),
-				),
-			),
-		),
-	);
-
-错误提示：config/message.php
-
+如果请求资源为 / （根目录）可以在config/route.php配置默认路由到哪个资源文件，
+config/route.php
 return array(
-	'example' => array(
-		'id' => array(
-			'digit' => 'id必须是数字',
-			'not_empty' => 'id不能为空',
-			'min_length' => 'id长度至少为:value',
-		),
-	),
+	'default' => 'welcome', //默认资源
 );
+
+当请求资源为动词或名词单数时采用RPC风格解释。
+例如：
+请求资源为 /oauth2/token 则自动路由到 classes/resource/oauth2.php 中的token方法
+请求资源为 /search 则自动路由post到 classes/resource/search.php 中的post方法
+
+    resource/welcome.php
+    /**
+     * 需要oauth2认证，继承Oauth2_Resource
+     * 不需要oauth2认证，继承Rest_Resource
+     */
+    class Resource_Welcome extends Rest_Resource
+    {
+        public function get()
+        {
+            $this->response->set_body(array('data' => 'welcome', 'method' => __FUNCTION__));
+        }
+    }
+
+每一个资源对应8个http方法(除RPC风格)。
+get_list\put_list\post_list\delete_list 对列表操作
+get\put\post\delete 对单个资源操作
+
+#### 扩展
+
+如果有需要可以根据实际情况修改。
 
 #### Config功能
 
 config文件如上面所示，就是返回一个数组。使用也很简单:
 
-	// 获取config/message.php文件的example key对应的内容
-	Config::get('message.example');
+// 获取config/cache.php文件的default key对应的内容
+    Rest_Config::get('cache.default');
 
-	// 设置config(不会写入到文件，只在一个http request有效)
-	Config::set('message.example.id.digit', 'id can be anything');
+// 设置config(不会写入到文件，只在一个http request有效)
+    Rest_Config::set('message.example.id.digit', 'id can be anything');
 
+#### 其他
+对于不支持PUT和DELETE方法的客户端，可以在请求参数上加上?_method=PUT 或 ?_method=DELETE
+
+对于不能接收非200状态码内容的客户端，可以在请求参数上加上?_suppress_response_codes=true 来强制响应状态码为200，
+返回的状态码需要解析返回数据中根节点的response_code
+正确响应
+    {
+      "response_code": 200,
+      "data": "welcome"
+    }
+错误响应
+    {
+      "response_code": 400,
+      "error": "invalid_request",  //oauth2规定错误消息必须在顶级节点且名称是error，错误消息在限定范围
+      "error_description": "The access token was not found.", //oauth2 可选错误描述信息
+      "trace": "OAuth2_Exception_Authenticate [ 0 ]: invalid_request ~ MOD_PATH/oauth2/classes/oauth2.php [ 486 ]"
+    }
+
+#### 接口参考格式
+
+资源操作
+Resource    POST(create)         GET(read)     PUT(update)                       DELETE(delete)
+/dogs       Create a new dog     List dogs     Bulk update dogs                  Delete all dogs
+/dogs/1234  Error                Show Bo       If exists Bo update,If not error  Delete Bo
+
+
+API请求和响应的格式
+
+	Create a brown dog named Al
+	POST /dogs
+	name=Al&furColor=brown
+	Response
+	200 OK
+
+	{
+	"id": "1234",
+	"name": "Al",
+	"fur_color": "brown"
+	}
+
+
+	Rename Al to Rover - Update
+	PUT /dogs/1234
+	name=Rover
+	Response
+	200 OK
+
+	{
+	"id":"1234",
+	"name": "Rover",
+	"fur_color": "brown"
+	}
+
+
+	Tell me about a particular dog
+	GET /dogs/1234
+	Response
+	200 OK
+
+	{
+	"id":"1234",
+	"name": "Rover",
+	"fur_color": "brown"
+	}
+
+	Tell me about all the dogs
+	GET /dogs
+	Response
+	200 OK
+
+	{
+	"data":
+	[{
+	"id":"1233",
+	"name": "Fido",
+	"fur_color": "white"},
+	{
+	"id":"1234",
+	"name": "Rover",
+	"fur_color": "brown"}]
+	"meta":
+	[{"total_count":327,"limit":25,"offset":100}]
+    }
+
+
+	Delete Rover :-(
+	DELETE /dogs/1234
+	Response
+	200 OK
+
+#### nginx rewrite设置
+    //gzip 压缩需要增加对application/json支持。
+
+    server
+    {
+        listen       80;
+        server_name  resty.test.com;
+        index index.html index.htm index.php;
+        set $root_path /var/www/html/resty/app;
+        root  $root_path;
+
+        #error_page  404              /404error/404.html;
+        #error_page  500 502 503 504  /404error/50x.html;
+        location = /favicon.ico {
+                log_not_found off;
+        }
+
+        location / {
+            index  index.php index.html index.htm;
+            if (!-e $request_filename) {
+                rewrite ^/(.*)$ /index.php last;
+            }
+        }
+
+        location ~ .*\.php?$
+        {
+               include fastcgi_params;
+                fastcgi_pass  127.0.0.1:9000;
+                fastcgi_index index.php;
+                fastcgi_connect_timeout 60;
+                fastcgi_send_timeout 180;
+                fastcgi_read_timeout 180;
+                fastcgi_buffer_size 128k;
+                fastcgi_buffers 4 256k;
+                fastcgi_busy_buffers_size 256k;
+                fastcgi_temp_file_write_size 256k;
+                fastcgi_intercept_errors on;
+                fastcgi_param  SCRIPT_FILENAME  $root_path$fastcgi_script_name;
+        }
+
+        #error_log  /data/logs/resty.test.com-error.log;
+        #access_log  /data/logs/resty.test.com-aceess.log main;
+
+    }
+
+#### TODO:
+
+接口调用限制
+接口统计（错误、性能、可用性、限额）
+安全
+数据保护
