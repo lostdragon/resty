@@ -67,12 +67,15 @@ config文件如上面所示，就是返回一个数组。使用也很简单:
 
 对于不能接收非200状态码内容的客户端，可以在请求参数上加上?_suppress_response_codes=true 来强制响应状态码为200，
 返回的状态码需要解析返回数据中根节点的response_code
+
 正确响应
+
     {
       "response_code": 200,
       "data": "welcome"
     }
 错误响应
+
     {
       "response_code": 400,
       "error": "invalid_request",  //oauth2规定错误消息必须在顶级节点且名称是error，错误消息在限定范围
@@ -83,9 +86,10 @@ config文件如上面所示，就是返回一个数组。使用也很简单:
 #### 接口参考格式
 
 资源操作
-Resource    POST(create)         GET(read)     PUT(update)                       DELETE(delete)
-/dogs       Create a new dog     List dogs     Bulk update dogs                  Delete all dogs
-/dogs/1234  Error                Show Bo       If exists Bo update,If not error  Delete Bo
+
+    Resource    POST(create)         GET(read)     PUT(update)                       DELETE(delete)
+    /dogs       Create a new dog     List dogs     Bulk update dogs                  Delete all dogs
+    /dogs/1234  Error                Show Bo       If exists Bo update,If not error  Delete Bo
 
 
 API请求和响应的格式
@@ -199,7 +203,7 @@ API请求和响应的格式
 
 #### TODO:
 
-接口调用限制
-接口统计（错误、性能、可用性、限额）
-安全
-数据保护
+#####接口调用限制
+#####接口统计（错误、性能、可用性、限额）
+#####安全
+#####数据保护
